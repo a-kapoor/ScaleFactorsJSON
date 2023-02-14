@@ -3,6 +3,9 @@ from ROOT import TFile, TH1F, TCanvas, TString
 import correctionlib.schemav2 as schema
 from correctionlib.schemav2 import Correction
 from math import fabs
+import pandas as pd
+import numpy as np
+
 corrs=[]
 #Function to extract SFs from EGamma standard root files
 def getSFs(fn="filename",IsSF="sf",sfhist="EGamma_SF2D"):
@@ -136,8 +139,6 @@ def ScaleUnc(year,valtypes=["scaleup","scaledown","scaleunc"]):
     })
     return output
 
-
-
 def CSEVSFs(files,name,i,IsSF="sf"):
     file=TFile(files[name])
     hist=file.Get(name+"ID/SF_CSEV_"+name+"ID")
@@ -226,3 +227,53 @@ def HasPixSFyearwise(files=[],names=[],valtypes=["sf","sfup","sfdown"]):
                 ],
     })
     return output
+
+def createDictFromPandas(df):
+        if (df.index.nlevels==1):
+            return df.to_dict()
+        dict_f = {}
+        for level in df.index.levels[0]:
+            if (level in df.index):
+                dict_f[level] = createDictFromPandas(df.xs([level]))
+        return dict_f
+
+def getSSdictRun2(year):
+    
+    url_dict = {
+        "2016preVFP": "https://raw.githubusercontent.com/cms-data/EgammaAnalysis-ElectronTools/master/ScalesSmearings/Run2016_UltraLegacy_preVFP_RunFineEtaR9Gain_scales.dat",
+        "2016postVFP": "https://raw.githubusercontent.com/cms-data/EgammaAnalysis-ElectronTools/master/ScalesSmearings/Run2016_UltraLegacy_postVFP_RunFineEtaR9Gain_scales.dat",
+        "2017": "https://raw.githubusercontent.com/cms-data/EgammaAnalysis-ElectronTools/master/ScalesSmearings/Run2017_24Feb2020_runEtaR9Gain_v2_scales.dat",
+        "2018": "https://raw.githubusercontent.com/cms-data/EgammaAnalysis-ElectronTools/master/ScalesSmearings/Run2018_29Sep2020_RunFineEtaR9Gain_scales.dat",
+    }
+    
+    print(url_dict[year])
+    data = np.genfromtxt(url_dict[year])
+    df = pd.DataFrame(np.squeeze(data), columns=['run_bin_low', 'run_bin_high', 'eta_bin_low', 'eta_bin_high',
+                                                 'r9_bin_low',"r9_bin_high","et_bin_low","et_bin_high",
+                                                 "gain_seed","total_correction","total_uncertainty"])
+    #df = df.iloc[1:]
+    #df = df.iloc[:-1]
+    
+    #temporary hack to fix eta boundaries
+    df.loc[(df['eta_bin_low'] >= 1.56) & (df['eta_bin_low'] <= 1.57), 'eta_bin_low'] = 1.566
+    df.loc[(df['eta_bin_high'] >= 1.56) & (df['eta_bin_high'] <= 1.57), 'eta_bin_high'] = 1.566
+    
+    df.loc[(df['eta_bin_low'] >= 1.44) & (df['eta_bin_low'] <= 1.45), 'eta_bin_low'] = 1.442
+    df.loc[(df['eta_bin_high'] >= 1.44) & (df['eta_bin_high'] <= 1.45), 'eta_bin_high'] = 1.442
+    
+    1.4442
+    
+    mydf=df.set_index(['run_bin_low','run_bin_high','eta_bin_low',
+                       'eta_bin_high','r9_bin_low',"r9_bin_high","et_bin_low","et_bin_high","gain_seed"])
+    newdf=createDictFromPandas(mydf)
+    return newdf
+
+def get_SS_runbins_and_SS_dict(year):
+    newdf=getSSdictRun2(year)
+    runbins=[]
+    runbinsa=list(newdf.keys())
+    for runbina in runbinsa:
+        runbins.append([runbina,list(newdf[runbina].keys())[0]])
+    return runbins,newdf
+
+
